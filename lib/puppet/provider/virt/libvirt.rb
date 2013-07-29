@@ -124,10 +124,13 @@ Puppet::Type.type(:virt).provide(:libvirt) do
   end
 
   def diskargs
-    parameters = ""
-    parameters = resource[:virt_path] if resource[:virt_path]
-    parameters.concat("," + resource[:disk_size]) if resource[:disk_size]
-    parameters.empty? ? [] : ["--disk", parameters]
+    return [] unless resource[:virt_path]
+    parameters = []
+    parameters << resource[:virt_path]
+    disk_format = resource[:virt_path].split('.').last
+    parameters << "format=#{disk_format}"
+    parameters << resource[:disk_size] if resource[:disk_size]
+    return ["--disk", parameters.join(',')]
   end
 
   # Additional boot arguments
