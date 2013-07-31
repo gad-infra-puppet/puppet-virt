@@ -1,14 +1,31 @@
 # virt_libvirt.rb
 
-def libvirt_connect
-  begin
+class CachedLibvirtConnection
+  @connection = nil
+  @cached = false
+
+  def self.get
+    cache_connection if not @cached
+    @connection
+  end
+
+  private
+
+  def self.cache_connection
     require 'libvirt'
-    Libvirt::open('qemu:///system')
+    @connection = Libvirt::open('qemu:///system')
+    @cached = true
   rescue LoadError
-    nil
+    # ruby-libvirt not installed
+    @connection = nil
+    @cached = true
   rescue Libvirt::Error => e
     raise
   end
+end
+
+def libvirt_connect
+  CachedLibvirtConnection.get
 end
 
 Facter.add("virt_libvirt") do
