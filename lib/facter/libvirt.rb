@@ -30,51 +30,74 @@ ensure
   c.close unless c.nil?
 end
 
-def add_fact_from_libvirt_conn(name, &block)
-  Facter.add(name) do
-    confine :virt_libvirt => true
-    confine :virt_conn => true
-    setcode do
-      begin
-        libvirt_connect &block
-      rescue Libvirt::Error, NoMethodError => e
-        warn(e)
-        nil
+
+# helper to add facts from libvirt attributes and/or methods
+class LibvirtFacter
+
+  def self.add(name)
+    LibvirtFacter.new(name)
+  end
+
+  # Add a fact computed from a libvirt attribute
+  # For a string attribute, the fact value is chomped
+  # For an array attribute, the fact value is a string made of
+  # array elements joined with commas
+  # If the libvirt attribute is an array and a block is given,
+  # then the block will be applied on every element of the array
+  def from_attribute(attribute, &block)
+    from_connection do |conn|
+      value = conn.send(attribute)
+      return nil if value.nil?
+
+      if value.kind_of?(Array)
+        if block_given?
+          value.collect! { |e| block.call(conn, e) }
+        end
+        value.join(',')
+      else
+        value.to_s.chomp
       end
     end
   end
-end
 
-def add_fact_from_libvirt_property(fact_name, libvirt_property, &block)
-  add_fact_from_libvirt_conn(fact_name) do |conn|
-    value = conn.send(libvirt_property)
-    return nil if value.nil?
-
-    if value.kind_of?(Array)
-      if block_given?
-        value.collect! { |e| block.call(conn, e) }
+  # the block is given a libvirt connection and must return the fact value
+  def from_connection(&block)
+    Facter.add(@name) do
+      confine :virt_libvirt => true
+      confine :virt_conn => true
+      setcode do
+        begin
+          libvirt_connect &block
+        rescue Libvirt::Error, NoMethodError => e
+          warn(e)
+          nil
+        end
       end
-      value.join(',')
-    else
-      value.to_s.chomp
     end
+  end
+
+  private
+
+  def initialize(name)
+    @name = name
   end
 end
 
-add_fact_from_libvirt_property("virt_conn_type", "type")
-add_fact_from_libvirt_property("virt_hypervisor_version", "version")
-add_fact_from_libvirt_property("virt_libvirt_version", "libversion")
-add_fact_from_libvirt_property("virt_hostname", "hostname")
-add_fact_from_libvirt_property("virt_uri", "uri")
-add_fact_from_libvirt_conn("virt_max_vcpus") { |conn| conn.max_vcpus('qemu') }
-add_fact_from_libvirt_property("virt_domains_active", "list_domains") do |conn, domid|
+
+LibvirtFacter.add("virt_conn_type").from_attribute("type")
+LibvirtFacter.add("virt_hypervisor_version").from_attribute("version")
+LibvirtFacter.add("virt_libvirt_version").from_attribute("libversion")
+LibvirtFacter.add("virt_hostname").from_attribute("hostname")
+LibvirtFacter.add("virt_uri").from_attribute("uri")
+LibvirtFacter.add("virt_max_vcpus").from_connection { |conn| conn.max_vcpus("qemu") }
+LibvirtFacter.add("virt_domains_active").from_attribute("list_domains") do |conn, domid|
   conn.lookup_domain_by_id(domid).name
 end
-add_fact_from_libvirt_property("virt_domains_inactive", "list_defined_domains")
-add_fact_from_libvirt_property("virt_networks_active", "list_networks")
-add_fact_from_libvirt_property("virt_networks_inactive", "list_defined_networks")
-add_fact_from_libvirt_property("virt_nodes", "list_nodedevices")
-add_fact_from_libvirt_property("virt_nwfilters", "list_nwfilters")
-add_fact_from_libvirt_property("virt_secrets", "list_secrets")
-add_fact_from_libvirt_property("virt_storage_pools_active", "list_storage_pools")
-add_fact_from_libvirt_property("virt_storage_pools_inactive", "list_defined_storage_pools")
+LibvirtFacter.add("virt_domains_inactive").from_attribute("list_defined_domains")
+LibvirtFacter.add("virt_networks_active").from_attribute("list_networks")
+LibvirtFacter.add("virt_networks_inactive").from_attribute("list_defined_networks")
+LibvirtFacter.add("virt_nodes").from_attribute("list_nodedevices")
+LibvirtFacter.add("virt_nwfilters").from_attribute("list_nwfilters")
+LibvirtFacter.add("virt_secrets").from_attribute("list_secrets")
+LibvirtFacter.add("virt_storage_pools_active").from_attribute("list_storage_pools")
+LibvirtFacter.add("virt_storage_pools_inactive").from_attribute("list_defined_storage_pools")
