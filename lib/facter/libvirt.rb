@@ -25,7 +25,22 @@ class CachedLibvirtConnection
 end
 
 def libvirt_connect
-  CachedLibvirtConnection.get
+  if block_given?
+    begin
+      c = nil
+      require 'libvirt'
+      yield c = Libvirt::open('qemu:///system')
+    rescue LoadError
+      # ruby-libvirt not installed
+      yield nil
+    rescue
+      raise
+    ensure
+      c.close unless c.nil?
+    end
+  else
+    CachedLibvirtConnection.get
+  end
 end
 
 Facter.add("virt_libvirt") do
@@ -43,8 +58,7 @@ Facter.add("virt_conn") do
   confine :virt_libvirt => true
   setcode do
     begin
-      libvirt_connect
-      true
+      libvirt_connect { |c| true }
     rescue Libvirt::Error, NoMethodError
       false
     end
@@ -56,7 +70,7 @@ Facter.add("virt_conn_type") do
   confine :virt_conn => true
   setcode do
     begin
-      libvirt_connect.type.chomp
+      libvirt_connect { |c| c.type.chomp }
     rescue Libvirt::Error, NoMethodError
       nil
     end
@@ -68,7 +82,7 @@ Facter.add("virt_hypervisor_version") do
   confine :virt_conn => true
   setcode do
     begin
-      libvirt_connect.version.to_s.chomp
+      libvirt_connect { |c| c.version.to_s.chomp }
     rescue Libvirt::Error, NoMethodError
       nil
     end
@@ -80,7 +94,7 @@ Facter.add("virt_libvirt_version") do
   confine :virt_conn => true
   setcode do
     begin
-      libvirt_connect.libversion.to_s.chomp
+      libvirt_connect { |c| c.libversion.to_s.chomp }
     rescue Libvirt::Error, NoMethodError
       nil
     end
@@ -92,7 +106,7 @@ Facter.add("virt_hostname") do
   confine :virt_conn => true
   setcode do
     begin
-      libvirt_connect.hostname.chomp
+      libvirt_connect { |c| c.hostname.chomp }
     rescue Libvirt::Error, NoMethodError
       nil
     end
@@ -104,7 +118,7 @@ Facter.add("virt_uri") do
   confine :virt_conn => true
   setcode do
     begin
-      libvirt_connect.uri.chomp
+      libvirt_connect { |c| c.uri.chomp }
     rescue Libvirt::Error, NoMethodError
       nil
     end
@@ -116,7 +130,7 @@ Facter.add("virt_max_vcpus") do
   confine :virt_conn => true
   setcode do
     begin
-      libvirt_connect.max_vcpus('qemu').to_s.chomp
+      libvirt_connect { |c| c.max_vcpus('qemu').to_s.chomp }
     rescue Libvirt::Error, NoMethodError
       nil
     end
@@ -129,8 +143,10 @@ Facter.add("virt_domains_active") do
   setcode do
     begin
       domains = []
-      libvirt_connect.list_domains.each do |domid|
-        domains.concat([ libvirt_connect.lookup_domain_by_id(domid.to_i).name ])
+      libvirt_connect do |c| 
+        c.list_domains.each do |domid|
+          domains.concat([ c.lookup_domain_by_id(domid.to_i).name ])
+        end
       end
       domains.join(',')
     rescue Libvirt::Error, NoMethodError
@@ -145,8 +161,10 @@ Facter.add("virt_domains_inactive") do
   setcode do
     begin
       domains = []
-      libvirt_connect.list_defined_domains.each do |domid|
-        domains.concat([ libvirt_connect.lookup_domain_by_id(domid.to_i).name ])
+      libvirt_connect do |c|
+        c.list_defined_domains.each do |domid|
+          domains.concat([ c.lookup_domain_by_id(domid.to_i).name ])
+        end
       end
       domains.join(',')
     rescue Libvirt::Error, NoMethodError
@@ -161,8 +179,10 @@ Facter.add("virt_networks_active") do
   setcode do
     begin
       networks = []
-      libvirt_connect.list_networks.each do |netname|
-        networks.concat([ netname ])
+      libvirt_connect do |c|
+        c.list_networks.each do |netname|
+          networks.concat([ netname ])
+        end
       end
       networks.join(',')
     rescue Libvirt::Error, NoMethodError
@@ -177,8 +197,10 @@ Facter.add("virt_networks_inactive") do
   setcode do
     begin
       networks = []
-      libvirt_connect.list_defined_networks.each do |netname|
-        networks.concat([ netname ])
+      libvirt_connect do |c|
+          c.list_defined_networks.each do |netname|
+          networks.concat([ netname ])
+        end
       end
       networks.join(',')
     rescue Libvirt::Error, NoMethodError
@@ -193,8 +215,10 @@ Facter.add("virt_nodes") do
   setcode do
     begin
       nodes = []
-      libvirt_connect.list_nodedevices.each do |nodename|
-        nodes.concat([ nodename ])
+      libvirt_connect do |c|
+        c.list_nodedevices.each do |nodename|
+          nodes.concat([ nodename ])
+        end
       end
       nodes.join(',')
     rescue Libvirt::Error, NoMethodError
@@ -209,8 +233,10 @@ Facter.add("virt_nwfilters") do
   setcode do
     begin
       nwfilters = []
-      libvirt_connect.list_nwfilters.each do |filtername|
-        nwfilters.concat([ filtername ])
+      libvirt_connect do |c|
+        c.list_nwfilters.each do |filtername|
+          nwfilters.concat([ filtername ])
+        end
       end
       nwfilters.join(',')
     rescue Libvirt::Error, NoMethodError
@@ -225,8 +251,10 @@ Facter.add("virt_secrets") do
   setcode do
     begin
       secrets = []
-      libvirt_connect.list_secrets.each do |secret|
-        secrets.concat([ secret ])
+      libvirt_connect do |c|
+        c.list_secrets.each do |secret|
+          secrets.concat([ secret ])
+        end
       end
       secrets.join(',')
     rescue Libvirt::Error, NoMethodError
@@ -241,8 +269,10 @@ Facter.add("virt_storage_pools_active") do
   setcode do
     begin
       pools = []
-      libvirt_connect.list_storage_pools.each do |pool|
-        pools.concat([ pool ])
+      libvirt_connect do |c|
+        c.list_storage_pools.each do |pool|
+          pools.concat([ pool ])
+        end
       end
       pools.join(',')
     rescue Libvirt::Error, NoMethodError
@@ -257,8 +287,10 @@ Facter.add("virt_storage_pools_inactive") do
   setcode do
     begin
       pools = []
-      libvirt_connect.list_defined_storage_pools.each do |pool|
-        pools.concat([ pool ])
+      libvirt_connect do |c|
+        c.list_defined_storage_pools.each do |pool|
+          pools.concat([ pool ])
+        end
       end
       pools.join(',')
     rescue Libvirt::Error, NoMethodError
