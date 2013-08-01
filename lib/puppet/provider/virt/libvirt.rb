@@ -292,13 +292,12 @@ Puppet::Type.type(:virt).provide(:libvirt) do
   # running | stopped | absent,
   def status
     if exists?
-    # 1 = running, 3 = paused|suspend|freeze, 5 = stopped
       if resource[:ensure].to_s == "installed"
         return :installed
-      elsif exec { |guest| guest.info.state } == 3
+      elsif exec { |guest| guest.info.state } == Libvirt::Domain::PAUSED
         debug "Domain %s status: suspended" % [resource[:name]]
         return :suspended
-      elsif exec { |guest| guest.info.state } != 5
+      elsif exec { |guest| guest.info.state } != Libvirt::Domain::SHUTOFF
         debug "Domain %s status: running" % [resource[:name]]
         return :running
       else
