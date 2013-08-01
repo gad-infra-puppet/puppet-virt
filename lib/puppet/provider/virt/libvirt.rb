@@ -109,10 +109,10 @@ Puppet::Type.type(:virt).provide(:libvirt) do
       arguments << ["-l", resource[:boot_location]]
     else
       if File.exists?(resource[:virt_path].split('=')[1])
-        warnonce("Ignoring PXE boot. Domain image already exists") if resource[:pxe]
+        warnonce("Ignoring PXE boot. Domain image already exists") if resource[:pxe] == :true
         debug "File already exists. Importing domain"
         arguments << "--import"
-      elsif resource[:pxe]
+      elsif resource[:pxe] == :true
         debug "Creating new domain. Using PXE"
         # Only works with hvm virtualization
         arguments << "--pxe"
