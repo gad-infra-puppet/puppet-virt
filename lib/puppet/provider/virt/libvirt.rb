@@ -30,12 +30,13 @@ Puppet::Type.type(:virt).provide(:libvirt) do
   end
 
   # Executes operation over guest
-  def exec
+  def exec(&block)
     conn = Libvirt::open(hypervisor)
-    @guest = conn.lookup_domain_by_name(resource[:name])
-    ret = yield if block_given?
+    guest = conn.lookup_domain_by_name(resource[:name])
+    yield(guest) if block_given?
+  ensure
+    guest.free
     conn.close
-    return ret
   end
 
   # Installs the new domain.
@@ -206,7 +207,7 @@ Puppet::Type.type(:virt).provide(:libvirt) do
       debug "Creating the domain: %s " % [resource[:name]]
       virsh args
 
-      exec { @guest.create } if bootoninstall
+      exec { |guest| guest.create } if bootoninstall
     else
       fail "Error: XML file not found: " + resource[:xml_file]
     end
@@ -217,11 +218,11 @@ Puppet::Type.type(:virt).provide(:libvirt) do
     debug "Trying to destroy domain %s" % [resource[:name]]
 
     begin
-      exec { @guest.destroy }
+      exec { |guest| guest.destroy }
     rescue Libvirt::Error => e
       debug "Domain %s already Stopped" % [resource[:name]]
     end
-    exec { @guest.undefine }
+    exec { |guest| guest.undefine }
   end
 
   #FIXME remove the guest's files
@@ -237,8 +238,8 @@ Puppet::Type.type(:virt).provide(:libvirt) do
       install(false)
     elsif status == :running
       case resource[:virt_type]
-        when :kvm,:qemu then exec { @guest.destroy }
-        else exec { @guest.shutdown }
+        when :kvm,:qemu then exec { |guest| guest.destroy }
+        else exec { |guest| guest.shutdown }
       end
     end
   end
@@ -249,10 +250,12 @@ Puppet::Type.type(:virt).provide(:libvirt) do
     elsif
       case status
       when :running
-        exec { @guest.suspend }
+        exec { |guest| guest.suspend }
       else
-        exec { @guest.create }
-        exec { @guest.suspend }
+        exec do |guest|
+          guest.create
+          guest.suspend
+        end
       end
     end
   end
@@ -264,9 +267,9 @@ Puppet::Type.type(:virt).provide(:libvirt) do
     if exists?
       case status
       when :suspended
-        exec { @guest.resume }
+        exec { |guest| guest.resume }
       else
-        exec { @guest.create }
+        exec { |guest| guest.create }
       end
     elsif status == :absent
       install
@@ -292,10 +295,10 @@ Puppet::Type.type(:virt).provide(:libvirt) do
     # 1 = running, 3 = paused|suspend|freeze, 5 = stopped
       if resource[:ensure].to_s == "installed"
         return :installed
-      elsif exec { @guest.info.state } == 3
+      elsif exec { |guest| guest.info.state } == 3
         debug "Domain %s status: suspended" % [resource[:name]]
         return :suspended
-      elsif exec { @guest.info.state } != 5
+      elsif exec { |guest| guest.info.state } != 5
         debug "Domain %s status: running" % [resource[:name]]
         return :running
       else
@@ -310,7 +313,7 @@ Puppet::Type.type(:virt).provide(:libvirt) do
 
   # Is the domain autostarting?
   def autoboot
-    return exec { @guest.autostart.to_s }
+    return exec { |guest| guest.autostart.to_s }
   end
 
   # Set true or false to autoboot property
@@ -318,36 +321,36 @@ Puppet::Type.type(:virt).provide(:libvirt) do
     debug "Trying to set autoboot %s at domain %s." % [resource[:autoboot], resource[:name]]
     # FIXME
     if value.to_s == "false"
-      exec { @guest.autostart=(false) }
+      exec { |guest| guest.autostart=(false) }
     else
-      exec { @guest.autostart=(true) }
+      exec { |guest| guest.autostart=(true) }
     end
   rescue Libvirt::RetrieveError => e
     debug "Domain %s not defined" % [resource[:name]]
   end
 
   def memory
-    mem = exec { @guest.max_memory }
+    mem = exec { |guest| guest.max_memory }
     mem / 1024 #MB
   end
 
   def memory=(value)
     mem = value * 1024 #MB
-    exec { @guest.destroy } unless status == :stopped
+    exec { |guest| guest.destroy } unless status == :stopped
     fail "Unable to stop the guest." if status != :stopped
-    exec { @guest.max_memory=(mem) }
+    exec { |guest| guest.max_memory=(mem) }
     start
   end
 
   def cpus
-    exec { @guest.num_vcpus 0 } #Why 0? See at http://www.libvirt.org/html/libvirt-libvirt.html#virDomainGetVcpusFlags
+    exec { |guest| guest.num_vcpus 0 } #Why 0? See at http://www.libvirt.org/html/libvirt-libvirt.html#virDomainGetVcpusFlags
   rescue Libvirt::RetrieveError => e
     debug "Domain is not running, cannot evaluate cpus parameter"
   end
 
   def cpus=(value)
     warn "It is not possible to set the # of cpus if the guest is not running." if status != :running
-    exec { @guest.vcpus=(value) }
+    exec { |guest| guest.vcpus=(value) }
   end
 
   # Not implemented by libvirt yet
