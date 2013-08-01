@@ -1,48 +1,5 @@
 # virt_libvirt.rb
 
-class CachedLibvirtConnection
-  @connection = nil
-  @cached = false
-
-  def self.get
-    cache_connection if not @cached
-    @connection
-  end
-
-  private
-
-  def self.cache_connection
-    require 'libvirt'
-    @connection = Libvirt::open('qemu:///system')
-    @cached = true
-  rescue LoadError
-    # ruby-libvirt not installed
-    @connection = nil
-    @cached = true
-  rescue Libvirt::Error => e
-    raise
-  end
-end
-
-def libvirt_connect
-  if block_given?
-    begin
-      c = nil
-      require 'libvirt'
-      yield c = Libvirt::open('qemu:///system')
-    rescue LoadError
-      # ruby-libvirt not installed
-      yield nil
-    rescue
-      raise
-    ensure
-      c.close unless c.nil?
-    end
-  else
-    CachedLibvirtConnection.get
-  end
-end
-
 Facter.add("virt_libvirt") do
   setcode do
     begin
@@ -65,13 +22,21 @@ Facter.add("virt_conn") do
   end
 end
 
-def add_fact_from_libvirt_conn(name)
+def libvirt_connect
+  # libvirt already loaded because "confine :virt_libvirt => true" in all facts
+  c = nil
+  yield c = Libvirt::open('qemu:///system')
+ensure
+  c.close unless c.nil?
+end
+
+def add_fact_from_libvirt_conn(name, &block)
   Facter.add(name) do
     confine :virt_libvirt => true
     confine :virt_conn => true
     setcode do
       begin
-        libvirt_connect { |conn| yield conn }
+        libvirt_connect &block
       rescue Libvirt::Error, NoMethodError => e
         warn(e)
         nil
