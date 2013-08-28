@@ -35,7 +35,7 @@ Puppet::Type.type(:virt).provide(:libvirt) do
     guest = conn.lookup_domain_by_name(resource[:name])
     yield(guest) if block_given?
   ensure
-    guest.free
+    guest.free unless guest.nil?
     conn.close
   end
 
