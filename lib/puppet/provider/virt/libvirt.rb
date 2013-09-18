@@ -370,8 +370,7 @@ Puppet::Type.type(:virt).provide(:libvirt) do
       current_config = guest.num_vcpus Libvirt::Domain::DOMAIN_AFFECT_CONFIG
       guest.vcpus_flags = [value, Libvirt::Domain::VCPU_CONFIG] if current_config != value
       # change live setting if host is running
-      state, reason = guest.state
-      if state == Libvirt::Domain::RUNNING
+      if guest.info.state == Libvirt::Domain::RUNNING
         begin
           current_live = guest.num_vcpus Libvirt::Domain::DOMAIN_AFFECT_LIVE
           guest.vcpus_flags = [value, Libvirt::Domain::VCPU_LIVE] if current_live != value
