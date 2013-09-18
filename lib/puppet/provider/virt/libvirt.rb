@@ -345,12 +345,30 @@ Puppet::Type.type(:virt).provide(:libvirt) do
     # Current returns live setting if host is running, config setting otherwise
     exec { |guest| guest.num_vcpus Libvirt::Domain::DOMAIN_AFFECT_CURRENT }
   rescue Libvirt::RetrieveError => e
-    debug "Domain is not running, cannot evaluate cpus parameter"
+    debug "Libvirt guest '#{resource[:name]}': cannot retrieve cpus property: #{e.message}"
   end
 
   def cpus=(value)
     warn "It is not possible to set the # of cpus if the guest is not running." if status != :running
-    exec { |guest| guest.vcpus=(value) }
+    exec do |guest|
+      if value > guest.max_vcpus
+        warnonce "requested vcpus is greater than max allowable vcpus for the guest: #{value.to_i} > #{guest.max_vcpus}. Number of vcpus left unchanged changed."
+        return
+      end
+      # change config setting
+      current_config = guest.num_vcpus Libvirt::Domain::DOMAIN_AFFECT_CONFIG
+      guest.vcpus_flags = [value, Libvirt::Domain::VCPU_CONFIG] if current_config != value
+      # change live setting if host is running
+      state, reason = guest.state
+      if state == Libvirt::Domain::RUNNING
+        begin
+          current_live = guest.num_vcpus Libvirt::Domain::DOMAIN_AFFECT_LIVE
+          guest.vcpus_flags = [value, Libvirt::Domain::VCPU_LIVE] if current_live != value
+        rescue Libvirt::Error => e
+          warnonce "Libvirt guest '#{resource[:name]}': number of cpus changed in configuration but not in running guest. You must restart guest for cpu changes to take effect. (message was: #{e.message})"
+        end
+      end
+    end
   end
 
   # Not implemented by libvirt yet
