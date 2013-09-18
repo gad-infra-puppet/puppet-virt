@@ -349,7 +349,6 @@ Puppet::Type.type(:virt).provide(:libvirt) do
   end
 
   def cpus=(value)
-    warn "It is not possible to set the # of cpus if the guest is not running." if status != :running
     exec do |guest|
       if value > guest.max_vcpus
         warnonce "requested vcpus is greater than max allowable vcpus for the guest: #{value.to_i} > #{guest.max_vcpus}. Number of vcpus left unchanged changed."
