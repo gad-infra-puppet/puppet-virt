@@ -336,16 +336,33 @@ Puppet::Type.type(:virt).provide(:libvirt) do
     return if not exists?
     exec do |guest|
       saved_state = guest.info.state
+
+      # shutdown guest if necessary
       if guest.info.state != Libvirt::Domain::SHUTOFF
-        debug "stopping guest to define max memory"
-        guest.destroy
+        debug "graceful shutdown of guest to define max memory"
+        guest.shutdown
+        # wait for 15 seconds to destroy vm (hard shutdown), give up at 20 seconds
+        secs = 0
+        while true
+          sleep(1)
+          break if guest.info.state == Libvirt::Domain::SHUTOFF
+          secs += 1
+          if secs == 15
+            debug "graceful shutdown had no effect after 15 seconds => force shutdown"
+            guest.destroy
+          elsif secs == 20
+            # fail if unable to stop
+            fail "Libvirt guest '#{resource[:name]}': unable to stop the guest to change max memory."
+          end
+        end
       end
-      # fail if unable to stop
-      fail "Libvirt guest '#{resource[:name]}': unable to stop the guest to change max memory." if guest.info.state != Libvirt::Domain::SHUTOFF
+
+      # change memory
       mem = value * 1024 # MiB
       guest.max_memory = mem
       guest.memory = [mem, Libvirt::Domain::DOMAIN_AFFECT_CONFIG]
-      # restart guest if it was started before changing memory
+
+      # restart guest if necessary
       if saved_state != Libvirt::Domain::SHUTOFF
         debug "restarting guest now that max memory has been changed"
         guest.create
