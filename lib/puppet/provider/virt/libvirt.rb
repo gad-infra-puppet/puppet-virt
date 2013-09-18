@@ -329,16 +329,28 @@ Puppet::Type.type(:virt).provide(:libvirt) do
   end
 
   def memory
-    mem = exec { |guest| guest.max_memory }
-    mem / 1024 #MB
+    exec { |guest| guest.max_memory / 1024 } # MiB
   end
 
   def memory=(value)
-    mem = value * 1024 #MB
-    exec { |guest| guest.destroy } unless status == :stopped
-    fail "Unable to stop the guest." if status != :stopped
-    exec { |guest| guest.max_memory=(mem) }
-    start
+    return if not exists?
+    exec do |guest|
+      saved_state = guest.info.state
+      if guest.info.state != Libvirt::Domain::SHUTOFF
+        debug "stopping guest to define max memory"
+        guest.destroy
+      end
+      # fail if unable to stop
+      fail "Libvirt guest '#{resource[:name]}': unable to stop the guest to change max memory." if guest.info.state != Libvirt::Domain::SHUTOFF
+      mem = value * 1024 # MiB
+      guest.max_memory = mem
+      guest.memory = [mem, Libvirt::Domain::DOMAIN_AFFECT_CONFIG]
+      # restart guest if it was started before changing memory
+      if saved_state != Libvirt::Domain::SHUTOFF
+        debug "restarting guest now that max memory has been changed"
+        guest.create
+      end
+    end
   end
 
   def cpus
