@@ -329,28 +329,16 @@ Puppet::Type.type(:virt).provide(:libvirt) do
   end
 
   def memory
-    exec { |guest| guest.info.memory / 1024 } # MiB
+    mem = exec { |guest| guest.max_memory }
+    mem / 1024 #MB
   end
 
   def memory=(value)
-    mem = value * 1024 # MiB
-    exec do |guest|
-      if mem > guest.info.max_mem
-        warnonce "Libvirt guest '#{resource[:name]}': requested memory greater than max allowable: #{value} > #{guest.info.max_mem / 1024}. Memory left unchanged."
-        return
-      end
-      # change config setting
-      guest.memory = [mem, Libvirt::Domain::DOMAIN_AFFECT_CONFIG]
-      # change live setting if host is running
-      state, reason = guest.state
-      if state == Libvirt::Domain::RUNNING
-        begin
-          guest.memory = [mem, Libvirt::Domain::DOMAIN_AFFECT_LIVE]
-        rescue Libvirt::Error => e
-          warnonce "Libvirt guest '#{resource[:name]}': allocated memory changed in configuration but not in running guest. You must restart guest for memory changes to take effect. (message was: #{e.message})"
-        end
-      end
-    end
+    mem = value * 1024 #MB
+    exec { |guest| guest.destroy } unless status == :stopped
+    fail "Unable to stop the guest." if status != :stopped
+    exec { |guest| guest.max_memory=(mem) }
+    start
   end
 
   def cpus
