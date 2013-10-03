@@ -108,7 +108,7 @@ Puppet::Type.type(:virt).provide(:libvirt) do
       fail "To use 'boot_location', you need to specify the 'virt_path' parameter." if resource[:virt_path].nil?
       arguments << ["-l", resource[:boot_location]]
     else
-      if File.exists?(resource[:virt_path].split('=')[1])
+      if resource[:virt_path] && File.exists?(resource[:virt_path].split('=')[1])
         warnonce("Ignoring PXE boot. Domain image already exists") if resource[:pxe] == :true
         debug "File already exists. Importing domain"
         arguments << "--import"
