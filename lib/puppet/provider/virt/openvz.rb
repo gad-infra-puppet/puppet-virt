@@ -77,7 +77,11 @@ Puppet::Type.type(:virt).provide(:openvz) do
   def install
     raise Puppet::Error, "Paramenter 'os_template' is required." if resource[:os_template].nil?
 
-    download(resource[:tmpl_repo]) if resource[:tmpl_repo]
+    if resource[:tmpl_repo]
+      download(resource[:tmpl_repo]) 
+    else
+      download
+    end
 
     args = [ 'create', ctid, '--ostemplate', ostemplate ]
 

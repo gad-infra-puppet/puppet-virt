@@ -7,9 +7,9 @@ class virt::params {
       $confdir = '/etc/vz/conf/'
       $vedir = '/var/lib/vz/' # You can update here with your custom value
       $packages = $operatingsystem ? {
-        Debian => [ "linux-image-${kernelmajversion}-openvz-686", 'vzctl', 'vzquota' ],
-        Ubuntu => [ "linux-image-${kernelmajversion}-openvz-686", 'vzctl', 'vzquota' ],
-        Fedora => [ 'ovzkernel', 'vzctl', 'vzquota' ],
+        Debian => [ "linux-image-${kernelmajversion}-openvz-${architecture}", 'vzctl', 'vzquota', 'vzdump' ],
+        Ubuntu => [ "linux-image-${kernelmajversion}-openvz-${architecture}", 'vzctl', 'vzquota', 'vzdump' ],
+        Fedora => [ 'ovzkernel', 'vzctl', 'vzquota', 'vzdump' ],
       }
     }
     /^physical|^kvm/: {
