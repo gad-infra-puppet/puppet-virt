@@ -10,14 +10,9 @@ class virt {
     subscribe => Package[$virt::params::packages],
   }
 
-  service { $virt::params::service:
+  service { $virt::params::servicename:
     ensure => running,
     enable => true,
-  }
-
-  service { $servicename:
-    ensure => 'running',
-    enable => 'true',
   }
 
   case $virtual {
@@ -27,9 +22,9 @@ class virt {
       file {
         "${virt::params::basedir}/vz.conf":
         ensure => present,
-        source => 'puppet:///modules/virt/global/vz.conf',
+        source => 'puppet:///modules/virt/vz.conf',
         notify => Service[$virt::params::servicename];
-        [ $virt::params::confdir, $virt::params::vedir ]: ensure => directory;
+        [ $virt::params::confdir, $virt::params::vedir ]: ensure => present;
       }
 
     }
