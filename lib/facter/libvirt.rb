@@ -1,16 +1,5 @@
 # virt_libvirt.rb
 
-def libvirt_connect
-  begin
-    require 'libvirt'
-    Libvirt::open('qemu:///system')
-  rescue LoadError
-    nil
-  rescue Libvirt::Error => e
-    raise
-  end
-end
-
 Facter.add("virt_libvirt") do
   setcode do
     begin
@@ -26,226 +15,89 @@ Facter.add("virt_conn") do
   confine :virt_libvirt => true
   setcode do
     begin
-      libvirt_connect
-      true
+      libvirt_connect { |c| true }
     rescue Libvirt::Error, NoMethodError
       false
     end
   end
 end
 
-Facter.add("virt_conn_type") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      libvirt_connect.type.chomp
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
+def libvirt_connect
+  # libvirt already loaded because "confine :virt_libvirt => true" in all facts
+  c = nil
+  yield c = Libvirt::open('qemu:///system')
+ensure
+  c.close unless c.nil?
 end
 
-Facter.add("virt_hypervisor_version") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      libvirt_connect.version.to_s.chomp
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
 
-Facter.add("virt_libvirt_version") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      libvirt_connect.libversion.to_s.chomp
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
+# helper to add facts from libvirt attributes and/or methods
+class LibvirtFacter
 
-Facter.add("virt_hostname") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      libvirt_connect.hostname.chomp
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
+  def self.add(name)
+    LibvirtFacter.new(name)
   end
-end
 
-Facter.add("virt_uri") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      libvirt_connect.uri.chomp
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
+  # Add a fact computed from a libvirt attribute
+  # For a string attribute, the fact value is chomped
+  # For an array attribute, the fact value is a string made of
+  # array elements joined with commas
+  # If the libvirt attribute is an array and a block is given,
+  # then the block will be applied on every element of the array
+  def from_attribute(attribute, &block)
+    from_connection do |conn|
+      value = conn.send(attribute)
+      return nil if value.nil?
 
-Facter.add("virt_max_vcpus") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      libvirt_connect.max_vcpus('qemu').to_s.chomp
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
-
-Facter.add("virt_domains_active") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      domains = []
-      libvirt_connect.list_domains.each do |domid|
-        domains.concat([ libvirt_connect.lookup_domain_by_id(domid.to_i).name ])
+      if value.kind_of?(Array)
+        if block_given?
+          value.collect! { |e| block.call(conn, e) }
+        end
+        value.join(',')
+      else
+        value.to_s.chomp
       end
-      domains.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
     end
+  end
+
+  # the block is given a libvirt connection and must return the fact value
+  def from_connection(&block)
+    Facter.add(@name) do
+      confine :virt_libvirt => true
+      confine :virt_conn => true
+      setcode do
+        begin
+          libvirt_connect &block
+        rescue Libvirt::Error, NoMethodError => e
+          warn(e)
+          nil
+        end
+      end
+    end
+  end
+
+  private
+
+  def initialize(name)
+    @name = name
   end
 end
 
-Facter.add("virt_domains_inactive") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      domains = []
-      libvirt_connect.list_defined_domains.each do |domid|
-        domains.concat([ libvirt_connect.lookup_domain_by_id(domid.to_i).name ])
-      end
-      domains.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
 
-Facter.add("virt_networks_active") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      networks = []
-      libvirt_connect.list_networks.each do |netname|
-        networks.concat([ netname ])
-      end
-      networks.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
+LibvirtFacter.add("virt_conn_type").from_attribute("type")
+LibvirtFacter.add("virt_hypervisor_version").from_attribute("version")
+LibvirtFacter.add("virt_libvirt_version").from_attribute("libversion")
+LibvirtFacter.add("virt_hostname").from_attribute("hostname")
+LibvirtFacter.add("virt_uri").from_attribute("uri")
+LibvirtFacter.add("virt_max_vcpus").from_connection { |conn| conn.max_vcpus("qemu") }
+LibvirtFacter.add("virt_domains_active").from_attribute("list_domains") do |conn, domid|
+  conn.lookup_domain_by_id(domid).name
 end
-
-Facter.add("virt_networks_inactive") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      networks = []
-      libvirt_connect.list_defined_networks.each do |netname|
-        networks.concat([ netname ])
-      end
-      networks.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
-
-Facter.add("virt_nodes") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      nodes = []
-      libvirt_connect.list_nodedevices.each do |nodename|
-        nodes.concat([ nodename ])
-      end
-      nodes.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
-
-Facter.add("virt_nwfilters") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      nwfilters = []
-      libvirt_connect.list_nwfilters.each do |filtername|
-        nwfilters.concat([ filtername ])
-      end
-      nwfilters.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
-
-Facter.add("virt_secrets") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      secrets = []
-      libvirt_connect.list_secrets.each do |secret|
-        secrets.concat([ secret ])
-      end
-      secrets.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
-
-Facter.add("virt_storage_pools_active") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      pools = []
-      libvirt_connect.list_storage_pools.each do |pool|
-        pools.concat([ pool ])
-      end
-      pools.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
-
-Facter.add("virt_storage_pools_inactive") do
-  confine :virt_libvirt => true
-  confine :virt_conn => true
-  setcode do
-    begin
-      pools = []
-      libvirt_connect.list_defined_storage_pools.each do |pool|
-        pools.concat([ pool ])
-      end
-      pools.join(',')
-    rescue Libvirt::Error, NoMethodError
-      nil
-    end
-  end
-end
+LibvirtFacter.add("virt_domains_inactive").from_attribute("list_defined_domains")
+LibvirtFacter.add("virt_networks_active").from_attribute("list_networks")
+LibvirtFacter.add("virt_networks_inactive").from_attribute("list_defined_networks")
+LibvirtFacter.add("virt_nodes").from_attribute("list_nodedevices")
+LibvirtFacter.add("virt_nwfilters").from_attribute("list_nwfilters")
+LibvirtFacter.add("virt_secrets").from_attribute("list_secrets")
+LibvirtFacter.add("virt_storage_pools_active").from_attribute("list_storage_pools")
+LibvirtFacter.add("virt_storage_pools_inactive").from_attribute("list_defined_storage_pools")
